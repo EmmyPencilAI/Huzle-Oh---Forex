@@ -1,0 +1,14 @@
+fastapi>=0.115.0
+uvicorn>=0.32.0
+pydantic>=2.9.0
+pydantic-settings>=2.5.0
+httpx>=0.27.2
+numpy>=1.26.0
+pandas>=2.2.0
+scikit-learn>=1.5.0
+reportlab>=4.2.0
+websockets>=13.0
+python-jose>=3.3.0
+passlib>=1.7.4
+# MetaTrader5 package is installed when running on Windows or Wine-based Linux VPS with MT5
+MetaTrader5>=5.0.45; sys_platform == 'win32'
