@@ -1,14 +1,10 @@
 import express from 'express';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import { HuzleOhTradingEngine } from './src/server/tradingEngine.js';
 
 dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const engine = new HuzleOhTradingEngine();
@@ -100,7 +96,7 @@ async function startServer() {
   // Real Exness MT5 Connect Endpoint
   app.post('/api/broker/connect', async (req, res) => {
     const { accountNumber, server, password, isLive } = req.body;
-    const result = await engine.exnessConnector.connectAccount({
+    const result = await engine.connectExnessAccount({
       accountNumber,
       server,
       password,
@@ -108,8 +104,6 @@ async function startServer() {
     });
 
     if (result.success && result.account) {
-      engine.account = { ...engine.account, ...result.account, errorMessage: undefined };
-      engine.addAgentEvent('HEAD_OF_DESK', 'EXECUTE', `Connected to Exness MT5 (${engine.account.server} · ${engine.account.accountNumber})`);
       res.json({
         success: true,
         message: result.message,
@@ -117,14 +111,6 @@ async function startServer() {
         availableSymbols: result.availableSymbols,
       });
     } else {
-      engine.account.connected = false;
-      engine.account.accountStatus = 'ERROR';
-      engine.account.connectionHealth = 'ERROR';
-      engine.account.balance = null;
-      engine.account.equity = null;
-      engine.account.freeMargin = null;
-      engine.account.errorMessage = result.message;
-      engine.addAgentEvent('AEGIS_GUARDIAN', 'WARNING', `Exness MT5 connection failed: ${result.message}`);
       res.status(400).json({
         success: false,
         message: result.message,
@@ -132,6 +118,65 @@ async function startServer() {
         account: engine.account,
       });
     }
+  });
+
+  // Broker Disconnect Endpoint
+  app.post('/api/broker/disconnect', (req, res) => {
+    engine.disconnectExnessAccount();
+    res.json({ success: true, message: 'Disconnected from Exness MT5. Live feeds offline.' });
+  });
+
+  // Real-time Server-Sent Events (SSE) Price Stream
+  app.get('/api/stream/prices', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    if (typeof (res as any).flushHeaders === 'function') {
+      (res as any).flushHeaders();
+    }
+
+    const sendUpdate = () => {
+      try {
+        const payload = JSON.stringify({
+          symbols: Object.values(engine.symbols),
+          connected: engine.account.connected,
+          accountStatus: engine.account.accountStatus,
+          timestamp: new Date().toISOString(),
+        });
+        res.write(`data: ${payload}\n\n`);
+      } catch (e) {
+        clearInterval(interval);
+      }
+    };
+
+    sendUpdate();
+    const interval = setInterval(sendUpdate, 1500);
+
+    req.on('close', () => {
+      clearInterval(interval);
+    });
+  });
+
+  // Structured Market Diagnostics Endpoint
+  app.get('/api/market/diagnostics', (req, res) => {
+    res.json(engine.exnessConnector.getMarketDiagnostics());
+  });
+
+  // Single Symbol Lookup & Spec
+  app.get('/api/symbol/:symbol', (req, res) => {
+    const symParam = req.params.symbol.toUpperCase();
+    const symData = engine.symbols[symParam];
+    const tick = engine.exnessConnector.getSymbolTick(symParam);
+    const brokerSym = engine.exnessConnector.resolveBrokerSymbol(symParam);
+    const spec = engine.exnessConnector.symbolSpecs[brokerSym];
+    res.json({
+      symbol: symParam,
+      brokerSymbol: brokerSym,
+      price: symData || null,
+      tick: tick || null,
+      spec: spec || null,
+      connected: engine.account.connected,
+    });
   });
 
   // 04:00 Daily Market Briefing Manual/Immediate Trigger

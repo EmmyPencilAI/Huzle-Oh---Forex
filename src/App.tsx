@@ -151,11 +151,35 @@ export default function App() {
     fetchCandles(selectedSymbol, timeframe);
     fetchHistory();
 
+    // Establish real-time Server-Sent Events (SSE) price stream for instant tick updates
+    let evtSource: EventSource | null = null;
+    try {
+      evtSource = new EventSource('/api/stream/prices');
+      evtSource.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data);
+          if (Array.isArray(parsed.symbols) && parsed.symbols.length > 0) {
+            setSymbols(parsed.symbols);
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      };
+      evtSource.onerror = () => {
+        evtSource?.close();
+      };
+    } catch {
+      // Fallback to polling
+    }
+
     const interval = setInterval(() => {
       fetchState();
-    }, 2800);
+    }, 3000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      evtSource?.close();
+    };
   }, [fetchState, fetchCandles, fetchHistory, selectedSymbol, timeframe]);
 
   // Actions

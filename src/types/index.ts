@@ -37,19 +37,64 @@ export interface BrokerAccount {
   errorMessage?: string;
 }
 
-export interface SymbolPrice {
+export interface BrokerSymbolSpec {
   symbol: string;
+  brokerSymbol: string;
+  description: string;
+  digits: number;
+  point: number;
+  tradeTickSize: number;
+  tradeTickValue: number;
+  volumeMin: number;
+  volumeMax: number;
+  volumeStep: number;
+  tradeContractSize: number;
+  tradeStopsLevel: number;
+  tradeFreezeLevel: number;
+  tradable: boolean;
+}
+
+export interface MT5Tick {
+  symbol: string;
+  brokerSymbol: string;
   bid: number;
   ask: number;
+  last: number;
+  spread: number;
   spreadPips: number;
+  volume: number;
+  timestamp: string;
+  timestampMs: number;
+  dataAgeMs: number;
+  source: string;
+  status: 'LIVE' | 'STALE' | 'OFFLINE';
+}
+
+export interface SymbolPrice {
+  symbol: string;
+  brokerSymbol?: string;
+  bid: number | null;
+  ask: number | null;
+  last?: number | null;
+  spreadPips: number | null;
+  spread?: number | null;
   change24h: number;
-  high24h: number;
-  low24h: number;
+  high24h?: number | null;
+  low24h?: number | null;
   trend: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
   volatility: 'LOW' | 'NORMAL' | 'ELEVATED' | 'HIGH';
   session: 'ASIAN' | 'LONDON' | 'NEW_YORK' | 'OVERLAP' | 'LONDON_NY_OVERLAP';
   aiConfidence: number;
   lastUpdated: number;
+  dataAgeMs?: number;
+  source?: string;
+  status?: 'LIVE' | 'STALE' | 'OFFLINE';
+  digits?: number;
+  point?: number;
+  contractSize?: number;
+  minLot?: number;
+  maxLot?: number;
+  lotStep?: number;
 }
 
 export interface Candle {

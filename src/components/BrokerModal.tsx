@@ -15,6 +15,7 @@ const EXNESS_PRESET_SERVERS = [
   'Exness-MT5Real2',
   'Exness-MT5Real3',
   'Exness-MT5Real4',
+  'Exness-MT5Trial9',
   'Exness-MT5Trial',
   'Exness-MT5Trial2',
 ];
