@@ -200,7 +200,7 @@ export const WalletView: React.FC<WalletViewProps> = ({
               Connect Exness MT5
             </button>
             <span className="text-[10px] text-gray-500 font-mono">
-              Live Real Account or Paper Simulation
+              Exness MT5 Real Live Connection
             </span>
           </div>
         </div>

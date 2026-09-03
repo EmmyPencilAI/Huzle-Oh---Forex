@@ -21,6 +21,10 @@ import { dbService } from './database.js';
 import { ExnessMT5Connector, ExnessCredentials } from './exnessConnector.js';
 import { telegramService } from './telegram.js';
 import { calculateTechnicalIndicators } from './technicalIndicators.js';
+import { decryptCredential } from './security.js';
+
+export { ExnessMT5Connector };
+export type { ExnessCredentials };
 
 // Lazy initialized Gemini client for server-side LLM reasoning
 let genAiClient: GoogleGenAI | null = null;
@@ -263,7 +267,7 @@ export class HuzleOhTradingEngine {
   public activeProposals: TradeProposal[] = [];
   public tradeHistory: HistoricalTrade[] = [];
   public agentEvents: AgentEvent[] = [];
-  public todayPnl = 84.32;
+  public todayPnl = 0.00;
   private ticketCounter = 849168;
 
   public exnessConnector = new ExnessMT5Connector();
@@ -289,7 +293,7 @@ export class HuzleOhTradingEngine {
     if (savedTrades && savedTrades.length > 0) {
       this.tradeHistory = savedTrades;
     } else {
-      this.seedInitialHistory();
+      this.initAgentStartupEvents();
     }
 
     // Auto-connect to Exness MT5 if credentials are present in env or saved in DB
@@ -304,17 +308,38 @@ export class HuzleOhTradingEngine {
         accountNumber: envLogin,
         server: envServer,
         password: envPassword,
-        isLive: envServer.toLowerCase().includes('real'),
+        isLive: true,
+        balance: process.env.EXNESS_MT5_BALANCE ? Number(process.env.EXNESS_MT5_BALANCE) : undefined,
       });
     } else if (savedBroker && savedBroker.account?.accountNumber && savedBroker.account?.server) {
       console.log(`[Trading Engine] Restoring saved broker connection (${savedBroker.account.server})...`);
       await this.connectExnessAccount({
         accountNumber: savedBroker.account.accountNumber,
         server: savedBroker.account.server,
-        password: savedBroker.encryptedPassword ? undefined : '',
-        isLive: Boolean(savedBroker.account.isLive),
+        password: savedBroker.encryptedPassword ? decryptCredential(savedBroker.encryptedPassword) : undefined,
+        isLive: true,
+        balance: savedBroker.account.balance !== null ? savedBroker.account.balance : undefined,
+        currency: savedBroker.account.currency,
+        leverage: savedBroker.account.leverage,
       });
     }
+  }
+
+  /**
+   * Updates verified account balance in real-time from user or broker PA
+   */
+  public updateAccountBalance(newBalance: number) {
+    if (!this.account.connected) {
+      throw new Error('Cannot update balance: Exness MT5 is not connected.');
+    }
+    const val = Number(Number(newBalance).toFixed(2));
+    this.account.balance = val;
+    this.account.equity = Number((val + this.openPositions.reduce((acc, p) => acc + p.pnl, 0)).toFixed(2));
+    this.account.freeMargin = Number((this.account.equity - (this.account.margin || 0)).toFixed(2));
+    this.account.lastSyncTime = Date.now();
+    dbService.saveBrokerAccount(this.account, this.exnessConnector.getEncryptedPassword());
+    this.addAgentEvent('HEAD_OF_DESK', 'CONSENSUS', `Exness MT5 account balance updated to $${val.toFixed(2)}.`);
+    return this.account;
   }
 
   /**
@@ -448,69 +473,13 @@ export class HuzleOhTradingEngine {
     this.candleHistory = this.exnessConnector.candleHistory;
   }
 
-  private seedInitialHistory() {
-    this.tradeHistory = [
-      {
-        id: 'hist-1',
-        ticket: 849160,
-        symbol: 'XAUUSD',
-        direction: 'BUY',
-        lotSize: 0.05,
-        entryPrice: 4448.20,
-        exitPrice: 4454.80,
-        stopLoss: 4440.00,
-        takeProfit: 4458.00,
-        grossPnl: 33.00,
-        fees: 1.20,
-        netPnl: 31.80,
-        durationMinutes: 18,
-        openTime: Date.now() - 1000 * 60 * 140,
-        closeTime: Date.now() - 1000 * 60 * 122,
-        strategy: 'Momentum Scalping',
-        aiConfidence: 91,
-        result: 'PROFIT',
-        audit: {
-          scoutSignal: 'Bullish M5 momentum acceleration confirmed by H1 EMA 50 rejection',
-          hunterStrategy: 'Breakout Scalp above 4445 resistance',
-          guardianRisk: 'Approved 0.05 lot, R:R 2.4:1',
-          headOfDeskVerdict: 'TRADE CANDIDATE (5/5 Consensus)',
-          aiConfidenceScore: 91,
-        },
-      },
-      {
-        id: 'hist-2',
-        ticket: 849164,
-        symbol: 'EURUSD',
-        direction: 'BUY',
-        lotSize: 0.10,
-        entryPrice: 1.1598,
-        exitPrice: 1.1628,
-        stopLoss: 1.1580,
-        takeProfit: 1.1640,
-        grossPnl: 30.00,
-        fees: 0.80,
-        netPnl: 29.20,
-        durationMinutes: 22,
-        openTime: Date.now() - 1000 * 60 * 300,
-        closeTime: Date.now() - 1000 * 60 * 278,
-        strategy: 'Trend Continuation',
-        aiConfidence: 86,
-        result: 'PROFIT',
-        audit: {
-          scoutSignal: 'London morning expansion with tight 0.8 pip spread',
-          hunterStrategy: 'Pullback Scalp at EMA 21',
-          guardianRisk: 'Risk $18.00 (0.75%), R:R 2.3:1',
-          headOfDeskVerdict: 'TRADE CANDIDATE (5/5 Consensus)',
-          aiConfidenceScore: 86,
-        },
-      },
-    ];
-
+  private initAgentStartupEvents() {
+    this.tradeHistory = [];
     this.addAgentEvent('QUANTUM_SCOUT', 'SCAN', 'Scanning discovered Exness MT5 instruments.');
     this.addAgentEvent('SETUP_HUNTER', 'SETUP', 'Hunter targeting high-probability 1:2.0+ setups with $3-$5 target.');
     this.addAgentEvent('MARKET_SENTINEL', 'SCAN', 'Sentinel monitoring real-time spread, liquidity & economic calendars.');
     this.addAgentEvent('AEGIS_GUARDIAN', 'RISK_PASS', 'Capital guardrails active: 1.5% max risk per trade, max 3 concurrent positions.');
-    this.addAgentEvent('HEAD_OF_DESK', 'CONSENSUS', 'Autonomous Head of Desk operational. Auto-trading is ON.');
+    this.addAgentEvent('HEAD_OF_DESK', 'CONSENSUS', 'Autonomous Head of Desk operational. Live MT5 execution mode active.');
   }
 
   public addAgentEvent(agent: AgentEvent['agent'], type: AgentEvent['type'], message: string, symbol?: string) {
@@ -923,7 +892,7 @@ export class HuzleOhTradingEngine {
       durationMinutes: 0,
       strategy,
       aiConfidence,
-      isPaper: !this.account.isLive,
+      isPaper: false,
       trailingStopActive: false,
       trailingDistancePips: this.riskSettings.trailingStopDistancePips || 6.0,
     };

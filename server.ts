@@ -85,22 +85,31 @@ async function startServer() {
     res.json(engine.getAgentSystemStatus());
   });
 
-  // Toggle Live vs Paper Mode
-  app.post('/api/account/switch-mode', (req, res) => {
-    const { isLive } = req.body;
-    engine.account.isLive = Boolean(isLive);
-    engine.addAgentEvent('HEAD_OF_DESK', 'WARNING', `Trading mode switched to: ${engine.account.isLive ? 'EXNESS LIVE' : 'PAPER SIMULATION'}`);
-    res.json({ success: true, isLive: engine.account.isLive });
+  // Update Live Account Balance directly from Exness MT5
+  app.post('/api/account/update-balance', (req, res) => {
+    const { balance } = req.body;
+    if (balance === undefined || isNaN(Number(balance))) {
+      return res.status(400).json({ success: false, message: 'Valid numeric balance is required.' });
+    }
+    try {
+      const updated = engine.updateAccountBalance(Number(balance));
+      res.json({ success: true, account: updated });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
   });
 
-  // Real Exness MT5 Connect Endpoint
+  // Real Exness MT5 Connect Endpoint (Strict validation & dynamic balance sync)
   app.post('/api/broker/connect', async (req, res) => {
-    const { accountNumber, server, password, isLive } = req.body;
+    const { accountNumber, server, password, balance, currency, leverage } = req.body;
     const result = await engine.connectExnessAccount({
       accountNumber,
       server,
       password,
-      isLive: Boolean(isLive),
+      isLive: true,
+      balance: balance !== undefined && !isNaN(Number(balance)) ? Number(balance) : undefined,
+      currency,
+      leverage: leverage ? Number(leverage) : undefined,
     });
 
     if (result.success && result.account) {
@@ -137,6 +146,7 @@ async function startServer() {
 
     const sendUpdate = () => {
       try {
+        engine.syncFromMT5();
         const payload = JSON.stringify({
           symbols: Object.values(engine.symbols),
           connected: engine.account.connected,
@@ -164,6 +174,7 @@ async function startServer() {
 
   // Single Symbol Lookup & Spec
   app.get('/api/symbol/:symbol', (req, res) => {
+    engine.syncFromMT5();
     const symParam = req.params.symbol.toUpperCase();
     const symData = engine.symbols[symParam];
     const tick = engine.exnessConnector.getSymbolTick(symParam);
@@ -187,6 +198,7 @@ async function startServer() {
 
   // Symbols & Real-time Ticks
   app.get('/api/symbols', (req, res) => {
+    engine.syncFromMT5();
     res.json(Object.values(engine.symbols));
   });
 
@@ -350,3 +362,5 @@ async function startServer() {
 }
 
 startServer();
+
+export { HuzleOhTradingEngine, ExnessMT5Connector } from './src/server/tradingEngine.js';

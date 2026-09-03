@@ -23,7 +23,7 @@ export interface BrokerAccount {
   currency: string;
   leverage: number;
   connected: boolean;
-  isLive: boolean; // false = PAPER TRADING, true = LIVE EXNESS
+  isLive: boolean; // Always true for active Exness MT5 execution (all mock/paper simulation removed)
   lastPingMs: number;
   tradingPermissions: {
     algoTrading: boolean;

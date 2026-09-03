@@ -1,23 +1,23 @@
 import React, { useState } from 'react';
-import { X, Server, Check, ShieldCheck, RefreshCw, AlertTriangle, Key, ArrowRight, Lock } from 'lucide-react';
+import { X, Server, Check, ShieldCheck, RefreshCw, AlertTriangle, Lock, DollarSign } from 'lucide-react';
 import { BrokerAccount } from '../types/index.js';
 
 interface BrokerModalProps {
   isOpen: boolean;
   onClose: () => void;
   account: BrokerAccount;
-  onConnect: (accountNumber: string, server: string, isLive: boolean, password?: string) => Promise<boolean | void>;
-  onToggleMode: (isLive: boolean) => void;
+  onConnect: (accountNumber: string, server: string, isLive: boolean, password?: string, balance?: number) => Promise<boolean | void>;
+  onToggleMode?: (isLive: boolean) => void;
 }
 
 const EXNESS_PRESET_SERVERS = [
+  'Exness-MT5Trial9',
   'Exness-MT5Real',
   'Exness-MT5Real2',
   'Exness-MT5Real3',
   'Exness-MT5Real4',
-  'Exness-MT5Trial9',
+  'Exness-MT5Real5',
   'Exness-MT5Trial',
-  'Exness-MT5Trial2',
 ];
 
 export const BrokerModal: React.FC<BrokerModalProps> = ({
@@ -25,32 +25,49 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({
   onClose,
   account,
   onConnect,
-  onToggleMode,
 }) => {
-  const [accountNumber, setAccountNumber] = useState(account.accountNumber);
-  const [server, setServer] = useState(account.server || 'Exness-MT5Real');
-  const [isLive, setIsLive] = useState(account.isLive);
+  const [accountNumber, setAccountNumber] = useState(account.accountNumber || '');
+  const [server, setServer] = useState(account.server || 'Exness-MT5Trial9');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [connectSuccess, setConnectSuccess] = useState(false);
+
+  // Sync state if account prop changes
+  React.useEffect(() => {
+    if (account.accountNumber) setAccountNumber(account.accountNumber);
+    if (account.server) setServer(account.server);
+  }, [account]);
 
   if (!isOpen) return null;
 
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+
+    // Client-side quick checks
+    const cleanAccount = accountNumber.trim();
+    if (!/^\d{6,10}$/.test(cleanAccount)) {
+      setErrorMessage(`Invalid account number "${cleanAccount}". Exness MT5 logins must be 6 to 10 digits numeric (e.g. 476864915).`);
+      return;
+    }
+
+    if (!password.trim()) {
+      setErrorMessage('MT5 trading password is required for live broker authentication.');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      await onConnect(accountNumber, server, isLive, password);
+      await onConnect(cleanAccount, server.trim(), true, password.trim());
       setConnectSuccess(true);
       setTimeout(() => {
         setConnectSuccess(false);
         onClose();
       }, 1200);
     } catch (err: any) {
-      setErrorMessage(err?.message || 'Failed to authenticate with Exness MT5 trade server.');
+      setErrorMessage(err?.message || 'Failed to authenticate with Exness MT5 trade server. Connection refused.');
     } finally {
       setIsLoading(false);
     }
@@ -67,9 +84,9 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold uppercase tracking-wider text-white">
-                Exness MT5 Gateway
+                Exness MT5 Real Connection
               </h3>
-              <p className="text-[10px] text-gray-500 font-mono">MetaTrader 5 Direct Connection</p>
+              <p className="text-[10px] text-gray-500 font-mono">MetaTrader 5 Direct Gateway (Real Only)</p>
             </div>
           </div>
           <button
@@ -80,42 +97,31 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({
           </button>
         </div>
 
-        {/* Live vs Paper Mode Banner */}
-        <div className="mb-4 p-3.5 rounded-xl bg-[#0B0B0B] border border-[#1E1E1E] flex items-center justify-between">
+        {/* Real-Only Policy Notice */}
+        <div className="mb-4 p-3 rounded-xl bg-[#0B0B0B] border border-[#1E1E1E] flex items-center justify-between">
           <div>
             <span className="font-bold text-white uppercase text-[11px] tracking-wider block">Execution Pipeline</span>
-            <span className="text-[10px] text-gray-400 font-mono">
-              {isLive ? '🔴 Real Exness Account & Market' : '🟢 Paper Trading Simulation'}
+            <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1 mt-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              100% Real Connections (Simulation Removed)
             </span>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              const next = !isLive;
-              setIsLive(next);
-              onToggleMode(next);
-            }}
-            className={`px-3 py-1.5 rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider transition-all border cursor-pointer ${
-              isLive
-                ? 'bg-red-500/15 border-red-500/40 text-red-400 shadow-sm shadow-red-500/10'
-                : 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
-            }`}
-          >
-            {isLive ? 'EXNESS LIVE' : 'PAPER SIM'}
-          </button>
+          <span className="px-2.5 py-1 rounded-md text-[10px] font-mono font-bold uppercase tracking-wider border bg-emerald-500/10 border-emerald-500/30 text-emerald-400">
+            EXNESS LIVE
+          </span>
         </div>
 
         {errorMessage && (
-          <div className="mb-4 p-3 rounded-xl bg-red-950/40 border border-red-800/60 text-red-300 text-xs flex items-start gap-2">
-            <AlertTriangle size={15} className="shrink-0 mt-0.5" />
-            <span>{errorMessage}</span>
+          <div className="mb-4 p-3.5 rounded-xl bg-red-950/50 border border-red-800 text-red-300 text-xs flex items-start gap-2.5">
+            <AlertTriangle size={16} className="shrink-0 mt-0.5 text-red-400" />
+            <div className="whitespace-pre-line leading-relaxed font-mono text-[11px]">{errorMessage}</div>
           </div>
         )}
 
         {connectSuccess && (
           <div className="mb-4 p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/60 text-emerald-300 text-xs flex items-center gap-2">
             <Check size={15} className="shrink-0" />
-            <span>Successfully authenticated with Exness MT5 trade cluster!</span>
+            <span>Successfully authenticated with Exness MT5 cluster! Real data synchronized.</span>
           </div>
         )}
 
@@ -130,7 +136,7 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({
               type="text"
               value={accountNumber}
               onChange={(e) => setAccountNumber(e.target.value)}
-              placeholder="e.g. 9482015"
+              placeholder="e.g. 476864915"
               required
               className="w-full px-3 py-2.5 rounded-xl bg-[#0B0B0B] border border-[#222222] text-white font-mono text-xs focus:outline-none focus:border-[#FF7A00] transition-colors"
             />
@@ -174,7 +180,7 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({
             <label className="text-gray-400 text-[10px] uppercase tracking-wider block mb-1 font-semibold flex items-center justify-between">
               <span className="flex items-center gap-1.5">
                 <span>MT5 Trading Password</span>
-                {isLive && <span className="text-red-400">*</span>}
+                <span className="text-red-400">*</span>
               </span>
               <span className="text-gray-500 text-[9px] font-mono flex items-center gap-1">
                 <Lock size={10} /> AES-256 Encrypted
@@ -184,21 +190,10 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder={isLive ? 'Required for Exness Live Trading' : 'Optional in Paper Mode'}
-              required={isLive}
+              placeholder="Enter your Exness MT5 trading password"
+              required
               className="w-full px-3 py-2.5 rounded-xl bg-[#0B0B0B] border border-[#222222] text-white font-mono text-xs focus:outline-none focus:border-[#FF7A00] transition-colors"
             />
-          </div>
-
-          {/* Security & Data Guarantee Note */}
-          <div className="p-3 rounded-xl bg-[#0B0B0B] border border-[#1E1E1E] text-[10px] text-gray-400 space-y-1">
-            <div className="flex items-center gap-1.5 font-bold text-gray-300 uppercase tracking-wider text-[9px]">
-              <ShieldCheck size={12} className="text-[#FF7A00]" />
-              <span>Zero Exposure Security Guarantee</span>
-            </div>
-            <p className="leading-relaxed">
-              Passwords are encrypted at rest with AES-256 and stored in the secure environment. Never exposed in API responses, logs, Telegram messages, or LLM prompts.
-            </p>
           </div>
 
           {/* Connected State Metrics Card */}
@@ -207,7 +202,7 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({
               <div className="flex items-center justify-between text-[10px]">
                 <span className="text-gray-400 uppercase font-semibold">Active MT5 Terminal Data</span>
                 <span className="font-mono text-emerald-400 font-bold flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   LIVE FEED
                 </span>
               </div>
@@ -229,14 +224,19 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({
                   <div className="text-xs font-mono font-bold text-white">1:{account.leverage}</div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-[10px] pt-1 text-gray-400 font-mono">
-                <div>Margin: <span className="text-white">${account.margin !== null ? account.margin.toFixed(2) : '--'}</span></div>
-                <div>Free Margin: <span className="text-white">${account.freeMargin !== null ? account.freeMargin.toFixed(2) : '--'}</span></div>
-                <div>Algo Trading: <span className="text-emerald-400">ENABLED</span></div>
-                <div>Trade Allowed: <span className="text-emerald-400">YES</span></div>
-              </div>
             </div>
           )}
+
+          {/* Security & Data Guarantee Note */}
+          <div className="p-3 rounded-xl bg-[#0B0B0B] border border-[#1E1E1E] text-[10px] text-gray-400 space-y-1">
+            <div className="flex items-center gap-1.5 font-bold text-gray-300 uppercase tracking-wider text-[9px]">
+              <ShieldCheck size={12} className="text-[#FF7A00]" />
+              <span>Strict Authentication & Security</span>
+            </div>
+            <p className="leading-relaxed">
+              Credentials are validated against the Exness MT5 cluster. Invalid logins, passwords, or servers are strictly rejected. Passwords remain encrypted at rest with AES-256.
+            </p>
+          </div>
 
           {/* Connect Button */}
           <div className="pt-2">
@@ -253,7 +253,7 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({
               ) : (
                 <>
                   <Check size={14} />
-                  <span>CONNECT ACCOUNT</span>
+                  <span>CONNECT REAL ACCOUNT</span>
                 </>
               )}
             </button>

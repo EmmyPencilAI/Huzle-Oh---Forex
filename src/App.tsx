@@ -301,28 +301,47 @@ export default function App() {
     }
   };
 
-  const handleConnectBroker = async (accountNumber: string, server: string, isLive: boolean, password?: string) => {
+  const handleConnectBroker = async (
+    accountNumber: string,
+    server: string,
+    isLive: boolean,
+    password?: string,
+    balance?: number
+  ) => {
     try {
       const res = await fetch('/api/broker/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountNumber, server, isLive, password }),
+        body: JSON.stringify({ accountNumber, server, isLive: true, password, balance }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.message || 'Exness MT5 authentication failed.');
       }
 
-      await fetch('/api/account/switch-mode', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isLive }),
-      });
-
-      showToast(`Connected to Exness MT5 (${server} · ${isLive ? 'LIVE' : 'PAPER'})`, 'success');
+      showToast(`Connected to Exness MT5 (${server} · Real Account)`, 'success');
       fetchState();
     } catch (e: any) {
       showToast(e?.message || 'Connection error', 'warning');
+      throw e;
+    }
+  };
+
+  const handleUpdateBalance = async (balance: number) => {
+    try {
+      const res = await fetch('/api/account/update-balance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ balance }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Failed to update balance');
+      }
+      showToast(`Exness balance updated to $${balance.toFixed(2)}`, 'success');
+      fetchState();
+    } catch (e: any) {
+      showToast(e?.message || 'Failed to update balance', 'warning');
       throw e;
     }
   };
@@ -361,18 +380,9 @@ export default function App() {
     }
   };
 
-  const handleToggleMode = async (isLive: boolean) => {
-    try {
-      await fetch('/api/account/switch-mode', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isLive }),
-      });
-      showToast(`Switched to ${isLive ? 'EXNESS LIVE' : 'PAPER SIMULATION'}`, 'info');
-      fetchState();
-    } catch (e) {
-      console.error(e);
-    }
+  const handleToggleMode = async (_isLive: boolean) => {
+    // Mode toggling deprecated: 100% real live execution enforced
+    fetchState();
   };
 
   const handleExportCsv = () => {

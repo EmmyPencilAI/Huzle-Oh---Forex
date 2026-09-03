@@ -37,8 +37,8 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="text-lg sm:text-xl font-bold tracking-tighter text-white">
               HUZLE <span className="text-[#FF7A00]">OH</span>
             </span>
-            <span className="hidden sm:inline-block text-[9px] px-1.5 py-0.5 rounded bg-[#151515] text-[#FF7A00] font-mono border border-[#222] font-semibold">
-              {account.isLive ? 'EXNESS LIVE' : 'PAPER SIM'}
+            <span className={`hidden sm:inline-block text-[9px] px-1.5 py-0.5 rounded font-mono border font-semibold ${account.connected ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-[#151515] text-gray-400 border-[#222]'}`}>
+              {account.connected ? 'EXNESS MT5 LIVE' : 'MT5 OFFLINE'}
             </span>
           </div>
         </div>
