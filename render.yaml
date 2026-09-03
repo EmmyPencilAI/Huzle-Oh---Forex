@@ -1,0 +1,61 @@
+# Render Deployment Blueprint
+# Huzle Oh — Agentic Trader
+# Multi-service topology: Web Service (API + UI) + Background Worker (Health Monitor Watchdog)
+
+services:
+  # 1. Main Web Service (FastAPI / Express + React Application)
+  - type: web
+    name: huzle-oh-web
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: EXNESS_MT5_LOGIN
+        sync: false
+      - key: EXNESS_MT5_PASSWORD
+        sync: false
+      - key: EXNESS_MT5_SERVER
+        value: Exness-MT5Real
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: GROK_API_KEY
+        sync: false
+
+  # 2. Background Watchdog Worker (Health & MT5 Keep-Alive Watchdog)
+  # IMPORTANT ARCHITECTURAL RULE:
+  # This worker is strictly a health/keep-alive and watchdog mechanism.
+  # It must NOT execute trades, scan markets, or run autonomous trading agents.
+  - type: worker
+    name: huzle-oh-worker
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm install && npm run build
+    startCommand: npm run start:worker
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: WEB_SERVICE_URL
+        fromService:
+          type: web
+          name: huzle-oh-web
+          property: host
+      - key: HEALTH_CHECK_INTERVAL_MS
+        value: 60000

@@ -42,27 +42,28 @@ function getGenAi(): GoogleGenAI | null {
 
 export class HuzleOhTradingEngine {
   public account: BrokerAccount = {
-    accountNumber: '9482015',
-    server: 'Exness-MT5Real',
-    broker: 'Exness',
-    balance: 2438.21,
-    equity: 2438.21,
-    freeMargin: 2368.21,
-    margin: 70.0,
-    marginLevel: 3480.0,
+    accountNumber: '',
+    server: '',
+    broker: 'Exness MT5',
+    balance: null,
+    equity: null,
+    freeMargin: null,
+    margin: null,
+    marginLevel: null,
     currency: 'USD',
     leverage: 500,
-    connected: true,
+    connected: false,
     isLive: false, // false = PAPER TRADING, true = LIVE EXNESS
-    lastPingMs: 14,
+    lastPingMs: 0,
     tradingPermissions: {
-      algoTrading: true,
+      algoTrading: false,
       investorMode: false,
-      tradeAllowed: true,
+      tradeAllowed: false,
     },
     pendingOrdersCount: 0,
-    accountStatus: 'CONNECTED',
-    connectionHealth: 'HEALTHY',
+    accountStatus: 'DISCONNECTED',
+    connectionHealth: 'DISCONNECTED',
+    lastSyncTime: 0,
   };
 
   public riskSettings: RiskSettings = {
@@ -588,7 +589,9 @@ export class HuzleOhTradingEngine {
         pos.lotSize = Number((pos.lotSize - partialLot).toFixed(2));
         pos.trailingStopActive = true; // remainder trails toward extended target ($5-$8)
 
-        this.account.balance = Number((this.account.balance + lockedProfit).toFixed(2));
+        if (this.account.balance !== null) {
+          this.account.balance = Number((this.account.balance + lockedProfit).toFixed(2));
+        }
         this.todayPnl = Number((this.todayPnl + lockedProfit).toFixed(2));
 
         this.addAgentEvent('HEAD_OF_DESK', 'EXECUTE', `💰 Partial profit locked: +$${lockedProfit} on #${pos.ticket} ${pos.symbol}. Remaining ${pos.lotSize} lot trailing toward extended target ($5-$8).`, pos.symbol);
@@ -622,9 +625,15 @@ export class HuzleOhTradingEngine {
       }
     }
 
-    this.account.equity = Number((this.account.balance + totalUnrealizedPnl).toFixed(2));
-    this.account.freeMargin = Number((this.account.equity - this.openPositions.length * 70.0).toFixed(2));
-    this.account.margin = this.openPositions.length * 70.0;
+    if (this.account.balance !== null) {
+      this.account.equity = Number((this.account.balance + totalUnrealizedPnl).toFixed(2));
+      this.account.margin = this.openPositions.length * 70.0;
+      this.account.freeMargin = Number((this.account.equity - this.account.margin).toFixed(2));
+    } else {
+      this.account.equity = null;
+      this.account.margin = null;
+      this.account.freeMargin = null;
+    }
   }
 
   private cleanExpiredProposals() {
@@ -660,6 +669,11 @@ export class HuzleOhTradingEngine {
    * MT5 Execution (Automatic when AUTO TRADING = ON)
    */
   public runAutonomousPipeline() {
+    // Enforce Rule: The trading engine must stop opening new positions if the MT5 connection becomes unhealthy.
+    if (!this.account.connected || this.account.connectionHealth !== 'HEALTHY') {
+      return;
+    }
+
     const candidateSymbols = ['EURUSD', 'XAUUSD', 'USDJPY', 'GBPUSD', 'USDCAD'];
     const chosen = candidateSymbols[Math.floor(Math.random() * candidateSymbols.length)];
     const sym = this.symbols[chosen];
@@ -697,7 +711,8 @@ export class HuzleOhTradingEngine {
     const slPips = Math.abs(entry - sl) / pipSize;
     const lotSize = 0.06;
     const riskAmount = Number((slPips * lotSize * pipValuePerLot).toFixed(2));
-    const riskPct = (riskAmount / this.account.equity) * 100;
+    const currentEquity = this.account.equity || 2400.0;
+    const riskPct = (riskAmount / currentEquity) * 100;
 
     // Hard Risk Checks
     if (this.openPositions.length >= this.riskSettings.maxSimultaneousTrades) {
@@ -737,6 +752,11 @@ export class HuzleOhTradingEngine {
     riskAmount: number,
     aiConfidence: number
   ): ActivePosition {
+    if (!this.account.connected || this.account.connectionHealth !== 'HEALTHY') {
+      this.addAgentEvent('HEAD_OF_DESK', 'WARNING', `Trade blocked: Exness MT5 is disconnected (${this.account.accountStatus}). Capital protected.`);
+      throw new Error(`Trade blocked: Exness MT5 is ${this.account.accountStatus}.`);
+    }
+
     this.ticketCounter++;
     const ticket = this.ticketCounter;
 
@@ -763,7 +783,9 @@ export class HuzleOhTradingEngine {
 
     this.openPositions.unshift(newPos);
     this.account.margin = this.openPositions.length * 70.0;
-    this.account.freeMargin = Number((this.account.equity - this.account.margin).toFixed(2));
+    if (this.account.equity !== null) {
+      this.account.freeMargin = Number((this.account.equity - this.account.margin).toFixed(2));
+    }
 
     this.addAgentEvent(
       'HEAD_OF_DESK',
@@ -799,6 +821,8 @@ export class HuzleOhTradingEngine {
     const expectedProfit = Number((tpPips * lot * pipValuePerLot).toFixed(2));
     const rr = Number((tpPips / Math.max(1, slPips)).toFixed(2));
 
+    const currentEquity = this.account.equity || 2400.0;
+
     const proposal: TradeProposal = {
       id: 'prop-' + Math.random().toString(36).substring(2, 8).toUpperCase(),
       symbol,
@@ -807,7 +831,7 @@ export class HuzleOhTradingEngine {
       stopLoss: sl,
       takeProfit: tp,
       lotSize: lot,
-      riskPercentage: Number(((riskAmount / this.account.equity) * 100).toFixed(2)),
+      riskPercentage: Number(((riskAmount / currentEquity) * 100).toFixed(2)),
       riskAmount,
       expectedProfit,
       riskReward: rr,
@@ -823,7 +847,7 @@ export class HuzleOhTradingEngine {
       scoutSummary: `Strong ${direction === 'BUY' ? 'bullish' : 'bearish'} momentum on ${timeframe}.`,
       hunterSummary: `${strategy} entry criteria satisfied with 1:${rr} R:R.`,
       sentinelSummary: 'London/NY overlap liquidity is strong. No major red news pending.',
-      guardianSummary: `Risk passed: ${lot} lots = $${riskAmount} max loss (${((riskAmount / this.account.equity) * 100).toFixed(1)}%).`,
+      guardianSummary: `Risk passed: ${lot} lots = $${riskAmount} max loss (${((riskAmount / currentEquity) * 100).toFixed(1)}%).`,
       headOfDeskSummary: 'Unanimous 5/5 agreement. High probability trade proposal awaiting operator approval.',
     };
 
@@ -845,7 +869,12 @@ export class HuzleOhTradingEngine {
       return { success: false, message: 'Proposal expired.' };
     }
 
-    // Final checks
+    // Health and Guardrail Checks
+    if (!this.account.connected || this.account.connectionHealth !== 'HEALTHY') {
+      prop.status = 'INVALIDATED';
+      return { success: false, message: 'TRADE BLOCKED: Exness MT5 is disconnected or unhealthy. Capital protected.' };
+    }
+
     if (this.riskSettings.killSwitchActive) {
       prop.status = 'INVALIDATED';
       return { success: false, message: 'TRADE INVALIDATED: Aegis Kill Switch is active.' };
@@ -887,7 +916,9 @@ export class HuzleOhTradingEngine {
     const pos = this.openPositions.splice(idx, 1)[0];
     const fees = 0.80;
     const netPnl = Number((pos.pnl - fees).toFixed(2));
-    this.account.balance = Number((this.account.balance + netPnl).toFixed(2));
+    if (this.account.balance !== null) {
+      this.account.balance = Number((this.account.balance + netPnl).toFixed(2));
+    }
     this.todayPnl = Number((this.todayPnl + netPnl).toFixed(2));
 
     const histTrade: HistoricalTrade = {

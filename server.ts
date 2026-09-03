@@ -10,16 +10,38 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const engine = new HuzleOhTradingEngine();
 
 async function startServer() {
   const app = express();
   app.use(express.json());
 
+  // CORS headers to prevent cross-origin fetch failures in iframes
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
   // === REST API ROUTES FIRST ===
 
-  // System Health
+  // 1. Lightweight Health Ping (Render Cron Keep-Alive / Uptime Monitor)
+  // Requires no authentication, performs no trading, exposes no secrets or account info
+  app.get('/health', (req, res) => {
+    res.status(200).json({
+      status: 'ok',
+      service: 'huzle-oh-agentic-trader',
+      timestamp: new Date().toISOString(),
+      version: '1.0.0',
+    });
+  });
+
+  // 2. Comprehensive System Health Telemetry
   app.get('/api/health', (req, res) => {
     res.json({
       status: 'healthy',
@@ -86,7 +108,7 @@ async function startServer() {
     });
 
     if (result.success && result.account) {
-      engine.account = { ...engine.account, ...result.account };
+      engine.account = { ...engine.account, ...result.account, errorMessage: undefined };
       engine.addAgentEvent('HEAD_OF_DESK', 'EXECUTE', `Connected to Exness MT5 (${engine.account.server} · ${engine.account.accountNumber})`);
       res.json({
         success: true,
@@ -96,12 +118,18 @@ async function startServer() {
       });
     } else {
       engine.account.connected = false;
-      engine.account.accountStatus = 'INVALID_CREDENTIALS';
+      engine.account.accountStatus = 'ERROR';
+      engine.account.connectionHealth = 'ERROR';
+      engine.account.balance = null;
+      engine.account.equity = null;
+      engine.account.freeMargin = null;
+      engine.account.errorMessage = result.message;
       engine.addAgentEvent('AEGIS_GUARDIAN', 'WARNING', `Exness MT5 connection failed: ${result.message}`);
       res.status(400).json({
         success: false,
         message: result.message,
         errorCode: result.errorCode,
+        account: engine.account,
       });
     }
   });
@@ -237,6 +265,23 @@ async function startServer() {
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename=Huzle_Oh_Trade_Audits.csv');
     res.send(csv);
+  });
+
+  // 404 handler for unmatched /api routes — guarantees JSON response, never HTML fallback
+  app.all('/api/*', (req, res) => {
+    res.status(404).json({
+      error: 'Not Found',
+      message: `API route ${req.method} ${req.path} not found`,
+    });
+  });
+
+  // Error handler for /api routes
+  app.use('/api', (err: any, req: any, res: any, next: any) => {
+    console.error('[API Error]:', err);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: err?.message || 'Unexpected server error',
+    });
   });
 
   // === VITE MIDDLEWARE SETUP ===

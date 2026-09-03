@@ -213,11 +213,15 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({
               <div className="grid grid-cols-3 gap-2 text-center pt-1">
                 <div className="p-2 rounded-lg bg-[#141414] border border-[#222222]">
                   <div className="text-[9px] text-gray-400 font-mono">BALANCE</div>
-                  <div className="text-xs font-mono font-bold text-white">${account.balance.toLocaleString()}</div>
+                  <div className="text-xs font-mono font-bold text-white">
+                    ${account.balance !== null ? account.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--'}
+                  </div>
                 </div>
                 <div className="p-2 rounded-lg bg-[#141414] border border-[#222222]">
                   <div className="text-[9px] text-gray-400 font-mono">EQUITY</div>
-                  <div className="text-xs font-mono font-bold text-[#FF7A00]">${account.equity.toLocaleString()}</div>
+                  <div className="text-xs font-mono font-bold text-[#FF7A00]">
+                    ${account.equity !== null ? account.equity.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--'}
+                  </div>
                 </div>
                 <div className="p-2 rounded-lg bg-[#141414] border border-[#222222]">
                   <div className="text-[9px] text-gray-400 font-mono">LEVERAGE</div>
@@ -225,8 +229,8 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2 text-[10px] pt-1 text-gray-400 font-mono">
-                <div>Margin: <span className="text-white">${account.margin || 70.0}</span></div>
-                <div>Free Margin: <span className="text-white">${account.freeMargin || 2368.21}</span></div>
+                <div>Margin: <span className="text-white">${account.margin !== null ? account.margin.toFixed(2) : '--'}</span></div>
+                <div>Free Margin: <span className="text-white">${account.freeMargin !== null ? account.freeMargin.toFixed(2) : '--'}</span></div>
                 <div>Algo Trading: <span className="text-emerald-400">ENABLED</span></div>
                 <div>Trade Allowed: <span className="text-emerald-400">YES</span></div>
               </div>

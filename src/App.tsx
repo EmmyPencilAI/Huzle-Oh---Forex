@@ -23,21 +23,31 @@ import {
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('wallet');
   const [account, setAccount] = useState<BrokerAccount>({
-    accountNumber: '9482015',
-    server: 'Exness-MT5Real',
-    broker: 'Exness',
-    balance: 2438.21,
-    equity: 2438.21,
-    freeMargin: 2368.21,
-    marginLevel: 3480.0,
+    accountNumber: '',
+    server: '',
+    broker: 'Exness MT5',
+    balance: null,
+    equity: null,
+    freeMargin: null,
+    margin: null,
+    marginLevel: null,
     currency: 'USD',
     leverage: 500,
-    connected: true,
+    connected: false,
     isLive: false,
-    lastPingMs: 14,
+    lastPingMs: 0,
+    tradingPermissions: {
+      algoTrading: false,
+      investorMode: false,
+      tradeAllowed: false,
+    },
+    pendingOrdersCount: 0,
+    accountStatus: 'DISCONNECTED',
+    connectionHealth: 'DISCONNECTED',
+    lastSyncTime: 0,
   });
 
-  const [todayPnl, setTodayPnl] = useState(84.32);
+  const [todayPnl, setTodayPnl] = useState(0.00);
   const [symbols, setSymbols] = useState<SymbolPrice[]>([]);
   const [selectedSymbol, setSelectedSymbol] = useState('XAUUSD');
   const [candles, setCandles] = useState<Candle[]>([]);
@@ -70,51 +80,69 @@ export default function App() {
     setTimeout(() => setNotification(null), 4000);
   };
 
+  // Resilient JSON fetch helper to prevent Safari/WebKit DOMException: "The string did not match the expected pattern"
+  const safeFetchJson = async <T,>(url: string, fallback: T): Promise<T> => {
+    try {
+      const res = await fetch(url, {
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) return fallback;
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) return fallback;
+      const text = await res.text();
+      if (!text || !text.trim()) return fallback;
+      return JSON.parse(text) as T;
+    } catch {
+      return fallback;
+    }
+  };
+
   // Poll state from fullstack server
   const fetchState = useCallback(async () => {
     try {
       const [acctRes, symsRes, posRes, propsRes, eventsRes, riskRes] = await Promise.all([
-        fetch('/api/account').then((r) => r.json()),
-        fetch('/api/symbols').then((r) => r.json()),
-        fetch('/api/positions').then((r) => r.json()),
-        fetch('/api/proposals').then((r) => r.json()),
-        fetch('/api/agents/events').then((r) => r.json()),
-        fetch('/api/settings/risk').then((r) => r.json()),
+        safeFetchJson<{ account?: BrokerAccount; todayPnl?: number }>('/api/account', {}),
+        safeFetchJson<SymbolPrice[]>('/api/symbols', []),
+        safeFetchJson<ActivePosition[]>('/api/positions', []),
+        safeFetchJson<TradeProposal[]>('/api/proposals', []),
+        safeFetchJson<AgentEvent[]>('/api/agents/events', []),
+        safeFetchJson<RiskSettings | null>('/api/settings/risk', null),
       ]);
 
-      if (acctRes.account) {
+      if (acctRes?.account) {
         setAccount(acctRes.account);
-        setTodayPnl(acctRes.todayPnl);
+        if (typeof acctRes.todayPnl === 'number') {
+          setTodayPnl(acctRes.todayPnl);
+        }
       }
-      if (Array.isArray(symsRes)) setSymbols(symsRes);
+      if (Array.isArray(symsRes) && symsRes.length > 0) setSymbols(symsRes);
       if (Array.isArray(posRes)) setOpenPositions(posRes);
       if (Array.isArray(propsRes)) setProposals(propsRes);
-      if (Array.isArray(eventsRes)) setAgentEvents(eventsRes);
+      if (Array.isArray(eventsRes) && eventsRes.length > 0) setAgentEvents(eventsRes);
       if (riskRes) setRiskSettings(riskRes);
     } catch (e) {
-      console.error('State poll error:', e);
+      // Non-fatal polling recovery
+      console.warn('State poll recovered from network delay:', e);
     }
   }, []);
 
   // Fetch Candlestick History
   const fetchCandles = useCallback(async (sym: string, tf: Timeframe) => {
     try {
-      const res = await fetch(`/api/candles?symbol=${sym}&timeframe=${tf}`);
-      const data = await res.json();
-      if (Array.isArray(data)) setCandles(data);
+      const data = await safeFetchJson<Candle[]>(`/api/candles?symbol=${sym}&timeframe=${tf}`, []);
+      if (Array.isArray(data) && data.length > 0) setCandles(data);
     } catch (e) {
-      console.error('Candles fetch error:', e);
+      console.warn('Candles fetch recovered:', e);
     }
   }, []);
 
   // Fetch Closed History
   const fetchHistory = useCallback(async () => {
     try {
-      const res = await fetch('/api/history');
-      const data = await res.json();
+      const data = await safeFetchJson<HistoricalTrade[]>('/api/history', []);
       if (Array.isArray(data)) setHistory(data);
     } catch (e) {
-      console.error('History fetch error:', e);
+      console.warn('History fetch recovered:', e);
     }
   }, []);
 
@@ -378,6 +406,7 @@ export default function App() {
             isScanning={isScanning}
             isProcessingAction={isProcessingAction}
             onNavigateTab={setActiveTab}
+            onOpenBrokerModal={() => setBrokerModalOpen(true)}
           />
         )}
 

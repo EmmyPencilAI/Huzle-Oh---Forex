@@ -39,7 +39,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ trades, onExportCsv })
     try {
       const res = await fetch('/api/backtest', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({
           symbol: backtestSymbol,
           days: backtestDays,
@@ -48,8 +48,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ trades, onExportCsv })
           timeframe: 'M5',
         }),
       });
-      const data = await res.json();
-      setBacktestResult(data);
+      if (res.ok) {
+        const text = await res.text();
+        const data = JSON.parse(text);
+        setBacktestResult(data);
+      }
     } catch (e) {
       console.error(e);
     } finally {

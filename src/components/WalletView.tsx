@@ -14,6 +14,9 @@ import {
   Lock,
   Send,
   Check,
+  AlertTriangle,
+  Link,
+  ShieldAlert,
 } from 'lucide-react';
 import { BrokerAccount, ActivePosition, TradeProposal, RiskSettings } from '../types/index.js';
 import { ProposalCard } from './ProposalCard.js';
@@ -33,6 +36,7 @@ interface WalletViewProps {
   isScanning: boolean;
   isProcessingAction: boolean;
   onNavigateTab: (tab: any) => void;
+  onOpenBrokerModal?: () => void;
 }
 
 export const WalletView: React.FC<WalletViewProps> = ({
@@ -50,16 +54,23 @@ export const WalletView: React.FC<WalletViewProps> = ({
   isScanning,
   isProcessingAction,
   onNavigateTab,
+  onOpenBrokerModal,
 }) => {
   const isPositiveToday = todayPnl >= 0;
-  const todayPnlPct = account.balance > 0 ? (todayPnl / account.balance) * 100 : 0;
-  const targetProgress = Math.min(100, Math.max(0, (todayPnlPct / riskSettings.dailyObjectivePct) * 100));
+  const isConnected = account.connected && account.connectionHealth === 'HEALTHY' && account.balance !== null;
+  const isError = account.accountStatus === 'ERROR' || account.connectionHealth === 'ERROR';
+  const hasBalance = account.balance !== null;
+  const currentBalance = account.balance ?? 0;
+  const todayPnlPct = hasBalance && currentBalance > 0 ? (todayPnl / currentBalance) * 100 : 0;
+  const targetProgress = hasBalance ? Math.min(100, Math.max(0, (todayPnlPct / riskSettings.dailyObjectivePct) * 100)) : 0;
   const isAuto = riskSettings.autoTradingEnabled ?? true;
   const [briefingSent, setBriefingSent] = useState(false);
 
-  const [intBalance, decBalance] = account.balance
-    .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    .split('.');
+  const [intBalance, decBalance] = hasBalance
+    ? account.balance!
+        .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        .split('.')
+    : ['--', '--'];
 
   const handleSendBriefing = () => {
     onTriggerBriefing?.();
@@ -108,77 +119,173 @@ export const WalletView: React.FC<WalletViewProps> = ({
         </button>
       </div>
 
-      {/* 2. Main Wallet Balance Card (Elegant Dark Design) */}
-      <div className="bg-[#151515] p-5 sm:p-6 rounded-2xl border border-[#1A1A1A] relative overflow-hidden shadow-2xl flex flex-col justify-between">
-        {/* Ambient Orange Glow */}
-        <div className="absolute top-0 right-0 w-36 h-36 bg-[#FF7A00] opacity-10 blur-[60px] pointer-events-none" />
+      {/* 2. Main Wallet Balance Card (Verification & Real Data Enforcement) */}
+      {isError ? (
+        <div className="bg-[#151515] p-5 sm:p-6 rounded-2xl border border-red-500/30 relative overflow-hidden shadow-2xl">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-red-400 text-xs font-bold uppercase tracking-widest flex items-center gap-1.5">
+              <AlertTriangle size={14} className="text-red-400" />
+              🔴 MT5 CONNECTION FAILED
+            </span>
+            <span className="text-[10px] px-2 py-0.5 rounded font-mono font-bold border bg-red-500/10 text-red-400 border-red-500/20">
+              TERMINAL UNREACHABLE
+            </span>
+          </div>
 
-        <div>
+          <div className="text-2xl sm:text-3xl font-mono font-bold tracking-tight text-white mb-2">
+            Unable to retrieve your Exness account.
+          </div>
+          <p className="text-xs text-gray-400 mb-2 font-mono">
+            Balance unavailable. The system will never display estimated or unverified balances in Live Trading mode.
+          </p>
+
+          {account.errorMessage && (
+            <div className="p-3 my-3 rounded-xl bg-red-950/30 border border-red-800/40 text-red-300 font-mono text-[11px] whitespace-pre-line leading-relaxed">
+              {account.errorMessage}
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 pt-2">
+            <button
+              onClick={onOpenBrokerModal}
+              className="px-4 py-2.5 rounded-xl bg-[#FF7A00] text-black hover:bg-[#FFA040] font-mono font-black text-xs uppercase tracking-wider cursor-pointer shadow-lg shadow-[#FF7A00]/20 transition-all"
+            >
+              Re-enter Exness Credentials
+            </button>
+            <span className="text-[10px] text-gray-500 font-mono">
+              Securely encrypted at rest • No passwords in logs
+            </span>
+          </div>
+        </div>
+      ) : !isConnected ? (
+        <div className="bg-[#151515] p-5 sm:p-6 rounded-2xl border border-[#1E1E1E] relative overflow-hidden shadow-2xl">
           <div className="flex justify-between items-start mb-3">
             <span className="text-gray-500 text-xs font-bold uppercase tracking-widest">
-              Total Equity
+              Exness MetaTrader 5 Terminal
             </span>
-            <span
-              className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold border ${
-                isPositiveToday
-                  ? 'bg-green-500/10 text-green-500 border-green-500/20'
-                  : 'bg-red-500/10 text-red-500 border-red-500/20'
-              }`}
+            <span className="text-[10px] px-2 py-0.5 rounded font-mono font-bold border bg-[#222] text-gray-400 border-[#333]">
+              ⚪ DISCONNECTED
+            </span>
+          </div>
+
+          <div className="text-3xl sm:text-4xl font-mono font-bold tracking-tight text-white mb-2">
+            Balance Unavailable
+          </div>
+          <p className="text-xs text-gray-400 mb-4 max-w-md font-mono leading-relaxed">
+            Connect your Exness MT5 account to verify and stream real-time balance, equity, and margin directly from the trading terminal.
+          </p>
+
+          {/* Verification Pipeline Diagram */}
+          <div className="p-3 mb-4 rounded-xl bg-[#0B0B0B] border border-[#1E1E1E]">
+            <div className="text-[9px] text-gray-500 font-mono uppercase mb-2">Strict Verification Protocol</div>
+            <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-gray-300">
+              <span className="px-1.5 py-0.5 rounded bg-[#1A1A1A] text-[#FF7A00]">Credentials</span>
+              <span>→</span>
+              <span className="px-1.5 py-0.5 rounded bg-[#1A1A1A]">MT5 Terminal</span>
+              <span>→</span>
+              <span className="px-1.5 py-0.5 rounded bg-[#1A1A1A]">Authentication</span>
+              <span>→</span>
+              <span className="px-1.5 py-0.5 rounded bg-[#1A1A1A]">Retrieval</span>
+              <span>→</span>
+              <span className="px-1.5 py-0.5 rounded bg-emerald-950/50 text-emerald-400 border border-emerald-500/30">Live Balance</span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={onOpenBrokerModal}
+              className="px-5 py-2.5 rounded-xl bg-[#FF7A00] text-black hover:bg-[#FFA040] font-mono font-black text-xs uppercase tracking-wider cursor-pointer shadow-lg shadow-[#FF7A00]/20 transition-all flex items-center gap-2"
             >
-              {isPositiveToday ? '+' : ''}
-              {todayPnlPct.toFixed(2)}% TODAY (${todayPnl.toFixed(2)})
+              <Link size={14} />
+              Connect Exness MT5
+            </button>
+            <span className="text-[10px] text-gray-500 font-mono">
+              Live Real Account or Paper Simulation
             </span>
           </div>
+        </div>
+      ) : (
+        <div className="bg-[#151515] p-5 sm:p-6 rounded-2xl border border-[#1A1A1A] relative overflow-hidden shadow-2xl flex flex-col justify-between">
+          {/* Ambient Orange Glow */}
+          <div className="absolute top-0 right-0 w-36 h-36 bg-[#FF7A00] opacity-10 blur-[60px] pointer-events-none" />
 
-          {/* Big Monospace Balance Display */}
-          <div className="text-4xl sm:text-5xl font-mono font-bold tracking-tight text-white mb-2">
-            ${intBalance}
-            <span className="opacity-50 text-2xl sm:text-3xl">.{decBalance || '00'}</span>
+          <div>
+            <div className="flex justify-between items-start mb-3">
+              <div>
+                <span className="text-gray-500 text-xs font-bold uppercase tracking-widest block">
+                  Total Equity
+                </span>
+                <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1 mt-0.5">
+                  <Check size={11} /> Verified via Exness MT5
+                  {account.lastSyncTime ? ` · ${new Date(account.lastSyncTime).toLocaleTimeString()}` : ''}
+                </span>
+              </div>
+              <span
+                className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold border ${
+                  isPositiveToday
+                    ? 'bg-green-500/10 text-green-500 border-green-500/20'
+                    : 'bg-red-500/10 text-red-500 border-red-500/20'
+                }`}
+              >
+                {isPositiveToday ? '+' : ''}
+                {todayPnlPct.toFixed(2)}% TODAY (${todayPnl.toFixed(2)})
+              </span>
+            </div>
+
+            {/* Big Monospace Balance Display */}
+            <div className="text-4xl sm:text-5xl font-mono font-bold tracking-tight text-white mb-2">
+              ${intBalance}
+              <span className="opacity-50 text-2xl sm:text-3xl">.{decBalance || '00'}</span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400 font-mono">
+              <p>
+                Server: <span className="text-white">{account.server}</span>
+              </p>
+              <span className="text-[#333]">·</span>
+              <p>
+                Leverage: <span className="text-white">1:{account.leverage}</span>
+              </p>
+              <span className="text-[#333]">·</span>
+              <p>
+                Free Margin:{' '}
+                <span className="text-emerald-400">
+                  ${account.freeMargin !== null ? account.freeMargin.toFixed(2) : '--'}
+                </span>
+              </p>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400 font-mono">
-            <p>
-              Server: <span className="text-white">{account.server}</span>
-            </p>
-            <span className="text-[#333]">·</span>
-            <p>
-              Leverage: <span className="text-white">1:{account.leverage}</span>
-            </p>
-            <span className="text-[#333]">·</span>
-            <p>
-              Free Margin: <span className="text-emerald-400">${account.freeMargin.toFixed(2)}</span>
-            </p>
+          {/* Dynamic Targets Status */}
+          <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-[#1A1A1A]">
+            <div className="p-2 rounded-xl bg-[#0B0B0B] border border-[#1E1E1E]">
+              <div className="text-[9px] text-gray-500 font-mono uppercase">NORMAL TARGET</div>
+              <div className="text-xs font-mono font-bold text-emerald-400">$3.00 - $5.00</div>
+            </div>
+            <div className="p-2 rounded-xl bg-[#0B0B0B] border border-[#1E1E1E]">
+              <div className="text-[9px] text-gray-500 font-mono uppercase">EXTENDED TARGET</div>
+              <div className="text-xs font-mono font-bold text-[#FF7A00]">$5.00 - $8.00</div>
+            </div>
+          </div>
+
+          {/* Daily Objective Progress */}
+          <div className="mt-4 pt-4 border-t border-[#1A1A1A]">
+            <div className="flex justify-between text-xs mb-2 font-mono">
+              <span className="text-gray-500">
+                Daily Target ({riskSettings.dailyObjectivePct}% · $
+                {hasBalance ? (account.balance! * (riskSettings.dailyObjectivePct / 100)).toFixed(2) : '0.00'})
+              </span>
+              <span className="text-[#FF7A00] font-bold">{targetProgress.toFixed(0)}%</span>
+            </div>
+            <div className="w-full h-1.5 bg-[#222] rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-[#FF7A00] to-[#FFA040] rounded-full transition-all duration-500"
+                style={{ width: `${targetProgress}%` }}
+              />
+            </div>
           </div>
         </div>
-
-        {/* Dynamic Targets Status */}
-        <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-[#1A1A1A]">
-          <div className="p-2 rounded-xl bg-[#0B0B0B] border border-[#1E1E1E]">
-            <div className="text-[9px] text-gray-500 font-mono uppercase">NORMAL TARGET</div>
-            <div className="text-xs font-mono font-bold text-emerald-400">$3.00 - $5.00</div>
-          </div>
-          <div className="p-2 rounded-xl bg-[#0B0B0B] border border-[#1E1E1E]">
-            <div className="text-[9px] text-gray-500 font-mono uppercase">EXTENDED TARGET</div>
-            <div className="text-xs font-mono font-bold text-[#FF7A00]">$5.00 - $8.00</div>
-          </div>
-        </div>
-
-        {/* Daily Objective Progress */}
-        <div className="mt-4 pt-4 border-t border-[#1A1A1A]">
-          <div className="flex justify-between text-xs mb-2 font-mono">
-            <span className="text-gray-500">
-              Daily Target ({riskSettings.dailyObjectivePct}% · ${(account.balance * (riskSettings.dailyObjectivePct / 100)).toFixed(2)})
-            </span>
-            <span className="text-[#FF7A00] font-bold">{targetProgress.toFixed(0)}%</span>
-          </div>
-          <div className="w-full h-1.5 bg-[#222] rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-[#FF7A00] to-[#FFA040] rounded-full transition-all duration-500"
-              style={{ width: `${targetProgress}%` }}
-            />
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* 3. Swarm Agents Health Strip */}
       <div className="p-3 rounded-2xl bg-[#151515] border border-[#1A1A1A]">

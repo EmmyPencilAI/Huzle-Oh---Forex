@@ -54,10 +54,12 @@ export const MarketsView: React.FC<MarketsViewProps> = ({
     try {
       const res = await fetch('/api/ai/debrief', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ symbol: activeSymbolData.symbol }),
       });
-      const data = await res.json();
+      if (!res.ok) throw new Error('Debrief request failed');
+      const text = await res.text();
+      const data = JSON.parse(text);
       setLlmDebrief(data.analysis);
     } catch (e) {
       setLlmDebrief(

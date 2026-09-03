@@ -15,11 +15,11 @@ export interface BrokerAccount {
   accountNumber: string;
   server: string;
   broker: string;
-  balance: number;
-  equity: number;
-  freeMargin: number;
-  margin: number;
-  marginLevel: number;
+  balance: number | null;
+  equity: number | null;
+  freeMargin: number | null;
+  margin: number | null;
+  marginLevel: number | null;
   currency: string;
   leverage: number;
   connected: boolean;
@@ -31,8 +31,10 @@ export interface BrokerAccount {
     tradeAllowed: boolean;
   };
   pendingOrdersCount: number;
-  accountStatus: 'CONNECTED' | 'DISCONNECTED' | 'INVALID_CREDENTIALS' | 'CONNECTING' | 'READ_ONLY';
+  accountStatus: 'CONNECTED' | 'DISCONNECTED' | 'INVALID_CREDENTIALS' | 'CONNECTING' | 'READ_ONLY' | 'ERROR';
   connectionHealth: 'HEALTHY' | 'DISCONNECTED' | 'ERROR' | 'RECONNECTING';
+  lastSyncTime?: number;
+  errorMessage?: string;
 }
 
 export interface SymbolPrice {
